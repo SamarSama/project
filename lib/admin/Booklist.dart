@@ -1,8 +1,17 @@
+import 'dart:developer';
+import 'dart:io';
+import 'dart:isolate';
+import 'dart:ui';
+
+import 'package:android_path_provider/android_path_provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_downloader/flutter_downloader.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:project/Models/book.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class Booklist extends StatefulWidget {
   const Booklist({Key? key}) : super(key: key);
@@ -15,7 +24,11 @@ class _BooklistState extends State<Booklist> {
   late DatabaseReference base, base1;
   late FirebaseDatabase database, database1;
   late FirebaseApp app, app1;
-
+  String? task;
+   bool isLoading=false;
+  late bool _permissionReady;
+  late String _localPath;
+  ReceivePort _port = ReceivePort();
 
   List<Book> BookList = [];
   List<String> bookkey = [];
@@ -25,6 +38,19 @@ class _BooklistState extends State<Booklist> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     bookListFun();
+  }
+  @override
+  void initState() {
+    super.initState();
+    isLoading = true;
+    _permissionReady = false;
+
+_prepareSaveDir();
+
+  }
+
+  void _launchUrl(String url) async {
+    if (!await launch(url)) throw 'Could not launch $url';
   }
 
   void bookListFun() async {
@@ -127,7 +153,18 @@ class _BooklistState extends State<Booklist> {
                                               side: BorderSide(
                                                   color: Colors
                                                       .lightBlue.shade200)))),
-                                  onPressed: () {},
+                                  onPressed: () {
+                                    log(BookList[index]
+                                        .file.toString());
+                                    if(BookList[index]
+                                        .file==null)
+                                      {
+                                        print("is null");
+                                        return;
+                                      }
+                                    _launchUrl(BookList[index]
+                                        .file.toString());
+                                  },
                                   icon: Icon(Icons.assistant_outlined),
                                   label: Text(
                                     "تحميل الكتاب",
@@ -248,5 +285,60 @@ class _BooklistState extends State<Booklist> {
     //             );
     //           }),
     //     ));  }
+  }
+
+
+
+
+  Future<bool> _openDownloadedFile(String? task) {
+    if (task != null) {
+      return FlutterDownloader.open(taskId: task);
+    } else {
+      return Future.value(false);
+    }
+  }
+
+
+
+  Future<Null> _prepare(String url) async {
+
+    String dir = (await getApplicationDocumentsDirectory()).path;
+
+    log(dir.toString());
+    log("//////////////");
+     task = await FlutterDownloader.enqueue(
+      url: url,
+      savedDir: dir,
+      showNotification: true, // show download progress in status bar (for Android)
+      openFileFromNotification: true, // click on notification to open downloaded file (for Android)
+    ).then((value) {
+       print(value.toString());
+     });
+
+  }
+
+  Future<void> _prepareSaveDir() async {
+    _localPath = (await _findLocalPath())!;
+    final savedDir = Directory(_localPath);
+    bool hasExisted = await savedDir.exists();
+    if (!hasExisted) {
+      savedDir.create();
+    }
+  }
+
+  Future<String?> _findLocalPath() async {
+    var externalStorageDirPath;
+    if (Platform.isAndroid) {
+      try {
+        externalStorageDirPath = await AndroidPathProvider.downloadsPath;
+      } catch (e) {
+        final directory = await getExternalStorageDirectory();
+        externalStorageDirPath = directory?.path;
+      }
+    } else if (Platform.isIOS) {
+      externalStorageDirPath =
+          (await getApplicationDocumentsDirectory()).absolute.path;
+    }
+    return externalStorageDirPath;
   }
 }
